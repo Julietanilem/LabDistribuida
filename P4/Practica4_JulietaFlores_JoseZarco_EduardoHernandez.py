@@ -15,13 +15,6 @@ class Node:
         self.waiting = []           # Mensajes esperando ser enviados [(mensaje, fase, tiempo_recepción)]
         self.is_leader = False      # Indica si este nodo es el líder
 
-    def __str__(self):
-        return f"Node {self.id}"
-    
-
-    def __compare__(self, other):
-        return self.id - other.id
-
 # Clase que representa una arista en la gráfica.
 class Edge:
     def __init__(self, node1, node2):
@@ -135,27 +128,16 @@ class Graph:
     
     def run_election(self, max_rounds=100, initiator_id=None):
         """Ejecuta el algoritmo de elección de líder usando SimPy"""
+
         self.max_rounds = max_rounds
 
+        #Hacemos del iniciador el primero en la lista para que sea el primero en ser procesado 
+        self.nodes = [n for n in self.nodes if n.id == initiator_id] + [n for n in self.nodes if n.id != initiator_id]
 
-        #hacemos del iniciador el primero en la lista para que sea el primero en ser procesado
-        nuevaL = []
-        for i in range(len(self.nodes)):
-            if self.nodes[i].id == initiator_id:
-                nuevaL.append(self.nodes[i])
-                break
-        for i in range(len(self.nodes)):
-            if self.nodes[i].id != initiator_id:
-                nuevaL.append(self.nodes[i])
-        self.nodes = nuevaL
-        ids = [node.id for node in self.nodes]
-        print("Nodos", ids)
         # Crear y ejecutar el proceso de rondas
         proc = self.env.process(self.round_process())
         self.env.run(until=proc)
       
-        #if initiator_id is not None:
-         #   self.nodes.insert(0, self.nodes.pop(self.nodes.index(initiator_id)))
         # Verificar resultado final
         leaders = [node for node in self.nodes if node.is_leader]
         if leaders:
@@ -166,37 +148,46 @@ class Graph:
         return leaders
 
     def graficar_anillo(self):
-            G = nx.Graph() 
+        """
+        Grafica la red después de que el algoritmo de elección de líder
+        ha terminado. Los nodos se colorearán según su estado final en la elección:
+            - Amarillo (gold) si el nodo es el líder
+            - Celeste (skyblue) si el nodo participó en la elección
+            - Naranja (orange) si el nodo fue relay
+            - Rojo (red) si el nodo no fue elegido
+            - Gris (gray) si el nodo no cambió de estado
+        """
+
+        G = nx.Graph() 
            
-            for node in self.orderNode:
-                G.add_node(node.id)
+        for node in self.orderNode:
+            G.add_node(node.id)
 
-            for node in self.orderNode:
-                if node.right_neighbor:
-                    G.add_edge(node.id, node.right_neighbor.id)
-                    print(f"Se agrega la arista {node.id} -> {node.right_neighbor.id}")
-            
-            pos = nx.circular_layout(G) 
+        for node in self.orderNode:
+            if node.right_neighbor:
+                G.add_edge(node.id, node.right_neighbor.id)
+        
+        pos = nx.circular_layout(G) 
 
-            # Colorear según estado final
-            color_map = []
-            for node in self.orderNode:
-                if node.status == "elected":
-                    color_map.append("gold")
-                elif node.status == "participating":
-                    color_map.append("skyblue")
-                elif node.status == "relay":
-                    color_map.append("orange")
-                elif node.status == "not_elected":
-                    color_map.append("red")
-                else:
-                    color_map.append("gray") 
+        # Colorear según estado final
+        color_map = []
+        for node in self.orderNode:
+            if node.status == "elected":
+                color_map.append("gold")
+            elif node.status == "participating":
+                color_map.append("skyblue")
+            elif node.status == "relay":
+                color_map.append("orange")
+            elif node.status == "not_elected":
+                color_map.append("red")
+            else:
+                color_map.append("gray") 
 
-            plt.figure(figsize=(8, 8))
-            nx.draw(G, pos, with_labels=True, node_color=color_map, node_size=1000)
-            plt.title("Red en anillo después de la elección de líder")
-            plt.axis("off")
-            plt.show()
+        plt.figure(figsize=(8, 8))
+        nx.draw(G, pos, with_labels=True, node_color=color_map, node_size=1000)
+        plt.title("Red según los estados finales de los nodos")
+        plt.axis("off")
+        plt.show()
 
 
 
@@ -218,7 +209,6 @@ nodes = [Node(i) for i in range(num_nodes)]
 edges = []
 for i in range(len(nodes)):
     edges.append(Edge(nodes[i], nodes[(i+1) % len(nodes)]))
-    # print(f"Conectando nodo {nodes[i].id} con nodo {nodes[(i+1) % len(nodes)].id}")
 
 # Crear gráfica
 graph = Graph(nodes, edges)
@@ -231,4 +221,6 @@ print(f"Iniciando elección con nodo aleatorio: {random_initiator}")
 # Ejecutar elección con el nodo aleatorio como iniciador
 leaders = graph.run_election(initiator_id=random_initiator)
 
+
+# Gráficar anillo
 graph.graficar_anillo()
