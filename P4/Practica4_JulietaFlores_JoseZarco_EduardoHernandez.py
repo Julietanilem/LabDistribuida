@@ -1,5 +1,7 @@
 import simpy  # Biblioteca para simulación de eventos discretos
 import random  # Añadido para despertar aleatoriamente nodos
+import networkx as nx
+import matplotlib.pyplot as plt
 
 # Clase que representa un nodo en la gráfica.
 class Node:
@@ -32,24 +34,14 @@ class Graph:
     def process_round(self):
         """Ejecuta una ronda del algoritmo para todos los nodos activos"""
         # Guardar mensajes actuales y limpiar para la próxima ronda
-        current_messages = self.messages.copy()
+        current_messages = {node: msgs[:] for node, msgs in self.messages.items()}
         self.messages = {node: [] for node in self.nodes}
         
         activity = False  # Para detectar si hay actividad en la ronda
         
         # Procesar cada nodo (solo si está activo o ha recibido mensajes)
         for node in self.nodes:
-            # Verificar si el nodo debe procesarse:
-            # 1. Recibió mensajes
-            # 2. Ya está activo (no está dormido)
-            # 3. Despierta de manera aleatoria (con baja probabilidad)
-            should_process = (current_messages[node] or 
-                             node.status != "asleep" or 
-                             random.random() < 0.20)  # 20% de probabilidad de despertar
             
-            if not should_process:
-                continue  # Saltar a siguiente nodo si no debe procesarse
-                
             # 1: let R be the set of messages received in this computation event
             R = current_messages[node]
             
@@ -78,13 +70,13 @@ class Graph:
                 # 10: if m < min then
                 if node.min is None or m < node.min:
                     # 11: become not elected
-                    if node.status == "participating":
-                        node.status = "not_elected"
+                    previous_state = node.status 
+                    node.status = "not_elected"
                     # 12: min := m
                     node.min = m
                     
                     # 13: if (status = relay) and (h = 1) then // m stays first phase
-                    if node.status == "relay" and h == 1:
+                    if previous_state == "relay" and h == 1:
                         # 14: add (m,h) to S
                         S.append((m, h))
                     # 15: else // m is/becomes second phase
@@ -94,12 +86,10 @@ class Graph:
                 
                 # 17: elseif m = id then become elected
                 elif m == node.id:
-                    # Solo se elige como líder si es el id más bajo
-                    # Esto garantiza que el nodo con ID más bajo sea el líder
-                    if m == min([n.id for n in self.nodes]):
                         node.status = "elected"
                         node.is_leader = True
                         print(f"Nodo {node.id} se ha declarado líder al recibir su propio ID")
+              
             
             # 18: for each (m,2) in waiting do
             new_waiting = []
@@ -107,16 +97,17 @@ class Graph:
                 # 19: if (m,2) was received 2^m - 1 rounds ago then
                 if self.env.now - stored_time >= (2**m - 1):
                     # 20: remove (m) from waiting and add to S
-                    S.append((m, h))
+                    S.append((m, h)) 
                 else:
                     new_waiting.append((m, h, stored_time))
             
             node.waiting = new_waiting
             
             # 21: send S to left
-            if S:
+            if S :
                 activity = True
                 self.messages[node.left_neighbor].extend(S)
+                
         
         return activity
     
@@ -131,7 +122,7 @@ class Graph:
             # Mostrar estado de cada nodo
             for node in self.nodes:
                 leader_status = " (LÍDER)" if node.is_leader else ""
-                print(f"Nodo {node.id}: Estatus = {node.status}, Min = {node.min}{leader_status}")
+                print(f"Nodo {node.id}: Estatus = {node.status}")
             print()
             
             # Esperar un tiempo entre rondas
@@ -141,23 +132,7 @@ class Graph:
         """Ejecuta el algoritmo de elección de líder usando SimPy"""
         self.max_rounds = max_rounds
         
-        # Inicializar, despertar a un nodo si se especifica
-        if initiator_id is not None:
-            for node in self.nodes:
-                if node.id == initiator_id:
-                    node.status = "participating"
-                    node.min = node.id
-                    # Envía mensaje a su vecino izquierdo
-                    self.messages[node.left_neighbor].append((node.id, 1))
-        
-        # También despertar al nodo con ID más bajo para garantizar su participación
-        lowest_id_node = min(self.nodes, key=lambda x: x.id)
-        if lowest_id_node.status == "asleep":
-            lowest_id_node.status = "participating"
-            lowest_id_node.min = lowest_id_node.id
-            self.messages[lowest_id_node.left_neighbor].append((lowest_id_node.id, 1))
-            print(f"Despertando nodo {lowest_id_node.id} (ID más bajo) para garantizar elección correcta")
-            
+    
         # Crear y ejecutar el proceso de rondas
         proc = self.env.process(self.round_process())
         self.env.run(until=proc)
@@ -170,6 +145,41 @@ class Graph:
             print("La elección terminó sin un líder claro")
         
         return leaders
+
+    def graficar_anillo(self):
+        G = nx.Graph() 
+
+        for node in self.nodes:
+            G.add_node(node.id)
+
+        for node in self.nodes:
+            if node.right_neighbor:
+                G.add_edge(node.id, node.right_neighbor.id)
+
+        pos = nx.circular_layout(G)  
+
+        # Colorear según estado final
+        color_map = []
+        for node in self.nodes:
+            if node.is_leader:
+                color_map.append("gold")
+            elif node.status == "elected":
+                color_map.append("lime")
+            elif node.status == "participating":
+                color_map.append("skyblue")
+            elif node.status == "relay":
+                color_map.append("orange")
+            elif node.status == "not_elected":
+                color_map.append("red")
+            else:
+                color_map.append("gray") 
+
+        plt.figure(figsize=(8, 8))
+        nx.draw(G, pos, with_labels=True, node_color=color_map, node_size=1000)
+        plt.title("Red en anillo después de la elección de líder")
+        plt.axis("off")
+        plt.show()
+
 
 
 # Solicitar al usuario el número de nodos
@@ -186,22 +196,22 @@ except ValueError:
 # Crear nodos
 nodes = [Node(i) for i in range(num_nodes)]
 
+
 # Crear conexiones en anillo
 edges = []
 for i in range(len(nodes)):
     edges.append(Edge(nodes[i], nodes[(i+1) % len(nodes)]))
-    # print(f"Conectando nodo {nodes[i].id} con nodo {nodes[(i+1) % len(nodes)].id}")
-
-# for i in range(len(nodes)):
-#    print(f"Nodo {nodes[i].id} tiene vecino izquierdo: {nodes[i].left_neighbor.id}, vecino derecho: {nodes[i].right_neighbor.id}")
+    
 
 # Crear gráfica
 graph = Graph(nodes, edges)
 
-# Seleccionar un iniciador aleatorio
+
+# Seleccionar un iniciador aleatorio. Un proceso p_i
 random_initiator = random.choice([node.id for node in nodes])
 print(f"Iniciando elección con nodo aleatorio: {random_initiator}")
 
 # Ejecutar elección con el nodo aleatorio como iniciador
 leaders = graph.run_election(initiator_id=random_initiator)
 
+graph.graficar_anillo()
