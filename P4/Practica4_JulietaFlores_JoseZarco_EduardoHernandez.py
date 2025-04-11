@@ -126,7 +126,7 @@ class Graph:
             # Esperar un tiempo entre rondas
             yield self.env.timeout(1)
     
-    def run_election(self, max_rounds=100, initiator_id=None):
+    def run_election(self, max_rounds=101, initiator_id=None):
         """Ejecuta el algoritmo de elección de líder usando SimPy"""
 
         self.max_rounds = max_rounds
@@ -197,6 +197,9 @@ try:
     num_nodes = int(input("Ingrese el número de nodos en la red: "))
     if num_nodes <= 0:
         print("El número de nodos debe ser positivo. Usando 10 por defecto.")
+        num_nodes = 10
+    if num_nodes > 100:
+        print("El número de nodos debe ser menor o igual a 100. Usando 10 por defecto.")
         num_nodes = 10
 except ValueError:
     print("Entrada inválida. Usando 10 nodos por defecto.")
